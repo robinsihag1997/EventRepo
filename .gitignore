@@ -29,3 +29,7 @@ dist-ssr/
 # OS
 .DS_Store
 Thumbs.db
+
+# Test Files
+frontend/src/components/MosaicWall.jsx
+frontend/src/MosaicPage.jsx
