@@ -15,12 +15,14 @@ export default function SuccessView({ t, name, onReset, ThemeToggle }) {
         <p className={`${t.textSecondary} mb-8 text-sm leading-relaxed transition-colors duration-500`}>
           Nice one, <span className={`${t.textPrimary} font-bold`}>{name}</span>! Your photo is now live in the gallery.
         </p>
-        <button
-          onClick={onReset}
-          className={`w-full py-4 px-6 ${t.successBtnBg} font-black uppercase tracking-widest rounded-2xl transition-all duration-300 active:scale-95`}
-        >
-          Take Another
-        </button>
+        <div className="mt-8 pt-8 border-t border-indigo-500/10">
+          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-500 animate-pulse">
+            Upload Limit Reached (1/1)
+          </p>
+          <p className={`${t.textMuted} text-[9px] mt-2 uppercase tracking-widest`}>
+            Thank you for participating!
+          </p>
+        </div>
       </div>
     </div>
   );

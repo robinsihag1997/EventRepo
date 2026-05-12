@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
-import { Camera, RefreshCw, Upload, CheckCircle, User, AlertCircle, X, Zap, Sun, Moon } from 'lucide-react';
+import { Camera, RefreshCw, Upload, CheckCircle, User, AlertCircle, X, Zap, Sun, Moon, Wifi, WifiOff } from 'lucide-react';
 import axios from 'axios';
 
 /**
@@ -108,6 +108,29 @@ export default function App() {
       if (videoRef.current && videoRef.current.srcObject) {
         videoRef.current.srcObject.getTracks().forEach(track => track.stop());
       }
+    };
+  }, []);
+
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [showOnlineStatus, setShowOnlineStatus] = useState(false);
+
+  useEffect(() => {
+    const handleOnline = () => {
+      setIsOnline(true);
+      setShowOnlineStatus(true);
+      setTimeout(() => setShowOnlineStatus(false), 3000);
+    };
+    const handleOffline = () => {
+      setIsOnline(false);
+      setShowOnlineStatus(true);
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
     };
   }, []);
 
@@ -237,8 +260,14 @@ export default function App() {
   }
 
   async function handleUpload() {
-    if (!name.trim()) return setError('Please enter your name.');
-    if (!image) return setError('Please capture image.');
+    if (!name.trim()) {
+      setError('Please enter your name.');
+      return false;
+    }
+    if (!image) {
+      setError('Please capture image.');
+      return false;
+    }
     setLoading(true);
     setError('');
 
@@ -281,8 +310,10 @@ export default function App() {
       localStorage.setItem('company_event_uploaded', 'true');
       setSuccess(true);
       setStep(3);
+      return true;
     } catch (err) {
       setError(err.response?.data?.error || err.message || 'Upload failed. Check server connection.');
+      return false;
     } finally {
       setLoading(false);
     }
@@ -302,21 +333,42 @@ export default function App() {
   );
 
   const resetAll = () => {
-    setIsUploaded(false); 
-    setSuccess(false); 
-    setName(''); 
-    setImage(null); 
-    setPreview(''); 
-    localStorage.removeItem('company_event_uploaded');
+    // We no longer remove 'company_event_uploaded' to enforce the 1-photo limit
     setStep(1); 
   };
 
   return (
     <>
+      {/* Internet Status Bar */}
+      {( (!isOnline) || (isOnline && showOnlineStatus) ) && (
+        <div className={`fixed top-0 left-0 right-0 z-[100] flex justify-center p-4 transition-all duration-500 transform ${showOnlineStatus || !isOnline ? 'translate-y-0' : '-translate-y-full'}`}>
+          <div className={`flex items-center gap-3 px-6 py-3 rounded-full shadow-2xl border backdrop-blur-md ${
+            !isOnline 
+              ? 'bg-red-500/90 border-red-400 text-white' 
+              : 'bg-emerald-500/90 border-emerald-400 text-white'
+          }`}>
+            {!isOnline ? (
+              <>
+                <WifiOff className="w-4 h-4 animate-pulse" />
+                <span className="text-[10px] font-black uppercase tracking-widest">Offline: Connection Lost</span>
+              </>
+            ) : (
+              <>
+                <Wifi className="w-4 h-4" />
+                <span className="text-[10px] font-black uppercase tracking-widest">Connection Restored</span>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
       {step === 1 && (
         <WelcomeView 
           t={t} 
-          setStep={setStep} 
+          onGetStarted={() => {
+            setStep(2);
+            startCamera();
+          }} 
           ThemeToggle={ThemeToggle} 
         />
       )}

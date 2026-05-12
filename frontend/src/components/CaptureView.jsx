@@ -1,5 +1,107 @@
 import React from 'react';
-import { Camera, RefreshCw, Upload, User, AlertCircle, X, Zap } from 'lucide-react';
+import { Camera, RefreshCw, Upload, User, AlertCircle, X, Zap, ChevronRight } from 'lucide-react';
+
+const LOADING_MESSAGES = [
+  "Analyzing facial features...",
+  "Enhancing image resolution...",
+  "Encrypting data transmission...",
+  "Syncing with event wall...",
+  "Finalizing your moment...",
+  "Unlocking the future..."
+];
+
+const SlideToSubmit = ({ onComplete, t }) => {
+  const [sliderValue, setSliderValue] = React.useState(0);
+  const [isDragging, setIsDragging] = React.useState(false);
+  const containerRef = React.useRef(null);
+  const isSubmitting = React.useRef(false);
+
+  const handleMove = React.useCallback(async (clientX) => {
+    if (!isDragging || !containerRef.current || isSubmitting.current) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    const x = clientX - rect.left;
+    const width = rect.width;
+    const newValue = Math.min(Math.max(((x - 32) / (width - 80)) * 100, 0), 100);
+    
+    if (newValue >= 98 && !isSubmitting.current) {
+      isSubmitting.current = true;
+      setIsDragging(false);
+      setSliderValue(100);
+      const success = await onComplete();
+      if (success === false) {
+        setSliderValue(0);
+        isSubmitting.current = false;
+      }
+    } else if (!isSubmitting.current) {
+      setSliderValue(newValue);
+    }
+  }, [isDragging, onComplete]);
+
+  const handleEnd = React.useCallback(() => {
+    if (!isDragging) return;
+    setIsDragging(false);
+    if (sliderValue < 98) {
+      setSliderValue(0);
+    }
+  }, [isDragging, sliderValue]);
+
+  React.useEffect(() => {
+    if (isDragging) {
+      const onMouseMove = (e) => handleMove(e.clientX);
+      const onMouseUp = handleEnd;
+      const onTouchMove = (e) => {
+        if (e.cancelable) e.preventDefault();
+        handleMove(e.touches[0].clientX);
+      };
+      const onTouchEnd = handleEnd;
+
+      window.addEventListener('mousemove', onMouseMove);
+      window.addEventListener('mouseup', onMouseUp);
+      window.addEventListener('touchmove', onTouchMove, { passive: false });
+      window.addEventListener('touchend', onTouchEnd);
+
+      return () => {
+        window.removeEventListener('mousemove', onMouseMove);
+        window.removeEventListener('mouseup', onMouseUp);
+        window.removeEventListener('touchmove', onTouchMove);
+        window.removeEventListener('touchend', onTouchEnd);
+      };
+    }
+  }, [isDragging, handleMove, handleEnd]);
+
+  return (
+    <div 
+      ref={containerRef}
+      className={`relative w-full h-16 sm:h-20 ${t.inputBg} rounded-2xl sm:rounded-3xl border ${t.inputBorder} overflow-hidden shadow-inner flex items-center p-1.5 sm:p-2 select-none touch-none`}
+    >
+      <div 
+        className="absolute inset-0 flex items-center justify-center pointer-events-none px-12"
+        style={{ opacity: 1 - (sliderValue / 50) }}
+      >
+        <span className={`text-[9px] sm:text-[11px] font-black uppercase tracking-[0.1em] ${t.textMuted} text-center leading-tight`}>
+          Submit to unlock the future
+        </span>
+      </div>
+      
+      <div 
+        className="h-13 w-13 sm:h-16 sm:w-16 bg-indigo-600 rounded-xl sm:rounded-2xl flex items-center justify-center shadow-lg cursor-grab active:cursor-grabbing z-10 transition-transform"
+        style={{ 
+          transform: `translateX(${(sliderValue / 100) * (containerRef.current ? containerRef.current.offsetWidth - (window.innerWidth < 640 ? 64 : 80) : 0)}px)`,
+          transition: isDragging ? 'none' : 'transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)'
+        }}
+        onMouseDown={() => setIsDragging(true)}
+        onTouchStart={() => setIsDragging(true)}
+      >
+        <ChevronRight className="w-6 h-6 sm:w-8 sm:h-8 text-white" />
+      </div>
+
+      <div 
+        className="absolute left-0 top-0 h-full bg-indigo-600/10 pointer-events-none transition-all"
+        style={{ width: `${sliderValue}%` }}
+      />
+    </div>
+  );
+};
 
 export default function CaptureView({
   t,
@@ -18,6 +120,20 @@ export default function CaptureView({
   retake,
   ThemeToggle
 }) {
+  const [msgIndex, setMsgIndex] = React.useState(0);
+
+  React.useEffect(() => {
+    let interval;
+    if (loading) {
+      interval = setInterval(() => {
+        setMsgIndex(prev => (prev + 1) % LOADING_MESSAGES.length);
+      }, 1500);
+    } else {
+      setMsgIndex(0);
+    }
+    return () => clearInterval(interval);
+  }, [loading]);
+
   return (
     <div className={`min-h-screen ${t.pageBg} ${t.textPrimary} font-sans overflow-x-hidden flex flex-col items-center transition-colors duration-500`}>
       <div className="w-full max-w-xl px-4 sm:px-6 py-8 sm:py-12">
@@ -130,13 +246,8 @@ export default function CaptureView({
             )}
 
             {preview && !loading && (
-              <div className="pt-4 space-y-4">
-                <button
-                  onClick={handleUpload}
-                  className="w-full py-6 bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xl rounded-3xl shadow-xl transition-all active:scale-95 flex items-center justify-center gap-3"
-                >
-                  <Upload className="w-6 h-6" /> Submit
-                </button>
+              <div className="pt-4 space-y-6">
+                <SlideToSubmit onComplete={handleUpload} t={t} />
                 <button onClick={retake} className={`w-full text-[10px] font-black ${t.retakeText} uppercase tracking-widest flex items-center justify-center gap-2`}>
                   <RefreshCw className="w-3 h-3" /> Retake Photo
                 </button>
@@ -144,19 +255,21 @@ export default function CaptureView({
             )}
 
             {loading && (
-              <div className="flex flex-col items-center gap-4 pt-6 animate-pulse">
-                <div className="w-10 h-10 border-4 border-indigo-500/20 border-t-indigo-500 rounded-full animate-spin" />
-                <span className="text-[10px] font-black text-indigo-500 uppercase tracking-widest">Transmitting...</span>
+              <div className="flex flex-col items-center gap-4 pt-6">
+                <div className="relative w-16 h-16">
+                  <div className="absolute inset-0 border-4 border-indigo-500/10 rounded-full" />
+                  <div className="absolute inset-0 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+                </div>
+                <div className="text-center space-y-1">
+                  <p className="text-[10px] font-black text-indigo-500 uppercase tracking-[0.2em] animate-pulse h-4">
+                    {LOADING_MESSAGES[msgIndex]}
+                  </p>
+                  <p className={`${t.textMuted} text-[8px] uppercase tracking-widest`}>Please wait</p>
+                </div>
               </div>
             )}
           </div>
         </div>
-
-        <footer className={`mt-20 text-center ${t.footerOpacity} transition-opacity duration-500`}>
-          <p className="text-[10px] font-black tracking-[0.4em] uppercase">
-            Direct Hardware Link &bull; Event Security V2.1
-          </p>
-        </footer>
       </div>
     </div>
   );
