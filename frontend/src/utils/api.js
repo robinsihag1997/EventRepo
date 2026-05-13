@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_BASE_URL = 'http://13.200.236.33:3000';
+const API_BASE_URL = 'https://d1mvv9oxjyn6w4.cloudfront.net/api';
 
 const api = axios.create({
   baseURL: API_BASE_URL,

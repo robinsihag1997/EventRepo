@@ -93,7 +93,7 @@ const authenticateAdmin = async (request, reply) => {
 // HEALTH
 // ====================================
 
-fastify.get('/', async () => {
+fastify.get('/api', async () => {
   return { ok: true, service: 'Event Platform API' };
 });
 
@@ -101,7 +101,7 @@ fastify.get('/', async () => {
 // API 1: Generate Signed Upload URL
 // ====================================
 
-fastify.post('/generate-upload-url', async (request, reply) => {
+fastify.post('/api/generate-upload-url', async (request, reply) => {
   const { name, contentType } = request.body;
 
   // Validation
@@ -142,7 +142,7 @@ fastify.post('/generate-upload-url', async (request, reply) => {
 // API 2: Save Upload Metadata
 // ====================================
 
-fastify.post('/save-upload', async (request, reply) => {
+fastify.post('/api/save-upload', async (request, reply) => {
   const { id, name, s3Key } = request.body;
 
   if (!id || !name || !s3Key) {
@@ -166,7 +166,7 @@ fastify.post('/save-upload', async (request, reply) => {
 // API 3: Get Images
 // ====================================
 
-fastify.get('/images', async (request, reply) => {
+fastify.get('/api/images', async (request, reply) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -223,7 +223,7 @@ fastify.get('/images', async (request, reply) => {
 // API 4: Admin Login
 // ====================================
 
-fastify.post('/admin/login', async (request, reply) => {
+fastify.post('/api/admin/login', async (request, reply) => {
   const { username, password } = request.body;
 
   try {
@@ -254,7 +254,7 @@ fastify.post('/admin/login', async (request, reply) => {
 // PROTECTED ADMIN APIs
 // ====================================
 
-fastify.get('/admin/uploads', { preHandler: [authenticateAdmin] }, async (request, reply) => {
+fastify.get('/api/admin/uploads', { preHandler: [authenticateAdmin] }, async (request, reply) => {
   try {
     const result = await pool.query(
       'SELECT id, name, s3_key, created_at, source FROM uploads ORDER BY created_at DESC'
@@ -285,7 +285,7 @@ fastify.get('/admin/uploads', { preHandler: [authenticateAdmin] }, async (reques
   }
 });
 
-fastify.delete('/admin/uploads/:id', { preHandler: [authenticateAdmin] }, async (request, reply) => {
+fastify.delete('/api/admin/uploads/:id', { preHandler: [authenticateAdmin] }, async (request, reply) => {
   const { id } = request.params;
 
   try {
@@ -317,7 +317,7 @@ fastify.delete('/admin/uploads/:id', { preHandler: [authenticateAdmin] }, async 
 // API 5: Unity Upload & QR Link Generation
 // ====================================
 
-fastify.post('/unity/upload', async (request, reply) => {
+fastify.post('/api/unity/upload', async (request, reply) => {
   const data = await request.file();
   if (!data) {
     return reply.status(400).send({ error: 'No file uploaded' });
@@ -349,7 +349,7 @@ fastify.post('/unity/upload', async (request, reply) => {
     const targetDate = new Date('2026-05-17T00:00:00Z');
     const now = new Date();
     // Calculate seconds remaining, default to 1 hour if target has passed
-    const secondsRemaining = Math.max(Math.floor((targetDate - now) / 1000), 3600); 
+    const secondsRemaining = Math.max(Math.floor((targetDate - now) / 1000), 3600);
 
     // 3. Generate Long-Term Signed URL for the QR code (Forcing Download)
     const command = new GetObjectCommand({
