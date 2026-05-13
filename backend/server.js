@@ -171,9 +171,9 @@ fastify.get('/images', async (request, reply) => {
   try {
     await client.query('BEGIN');
 
-    // 1. Fetch images that haven't been sent yet
+    // 1. Fetch images that haven't been sent yet and are from 'user' source
     const result = await client.query(
-      'SELECT id, name, s3_key, created_at FROM uploads WHERE is_sent = FALSE ORDER BY created_at ASC'
+      "SELECT id, name, s3_key, created_at FROM uploads WHERE is_sent = FALSE AND source = 'user' ORDER BY created_at ASC"
     );
 
     if (result.rows.length === 0) {
@@ -257,7 +257,7 @@ fastify.post('/admin/login', async (request, reply) => {
 fastify.get('/admin/uploads', { preHandler: [authenticateAdmin] }, async (request, reply) => {
   try {
     const result = await pool.query(
-      'SELECT id, name, s3_key, created_at FROM uploads ORDER BY created_at DESC'
+      'SELECT id, name, s3_key, created_at, source FROM uploads ORDER BY created_at DESC'
     );
 
     const uploads = await Promise.all(
@@ -339,16 +339,23 @@ fastify.post('/unity/upload', async (request, reply) => {
     // 1. Upload to S3
     await s3Client.send(new PutObjectCommand(uploadParams));
 
-    // 2. Calculate expiry: End of May 16, 2026
+    // 2. Save to Database
+    await pool.query(
+      "INSERT INTO uploads (id, name, s3_key, source, is_sent) VALUES ($1, $2, $3, $4, $5)",
+      [id, 'Unity Capture', s3Key, 'unity', true]
+    );
+
+    // 3. Calculate expiry: End of May 16, 2026
     const targetDate = new Date('2026-05-17T00:00:00Z');
     const now = new Date();
     // Calculate seconds remaining, default to 1 hour if target has passed
     const secondsRemaining = Math.max(Math.floor((targetDate - now) / 1000), 3600); 
 
-    // 3. Generate Long-Term Signed URL for the QR code
+    // 3. Generate Long-Term Signed URL for the QR code (Forcing Download)
     const command = new GetObjectCommand({
       Bucket: AWS_BUCKET,
       Key: s3Key,
+      ResponseContentDisposition: `attachment; filename="photo_${id.slice(0, 8)}.jpg"`
     });
 
     const downloadUrl = await getSignedUrl(s3Client, command, { expiresIn: secondsRemaining });

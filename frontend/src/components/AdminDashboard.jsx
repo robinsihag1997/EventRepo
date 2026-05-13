@@ -18,7 +18,9 @@ import {
   LayoutGrid,
   List,
   Trash2,
-  AlertTriangle
+  AlertTriangle,
+  QrCode,
+  Filter
 } from 'lucide-react';
 
 export default function AdminDashboard() {
@@ -30,6 +32,7 @@ export default function AdminDashboard() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedImage, setSelectedImage] = useState(null);
   const [viewMode, setViewMode] = useState('table'); // 'table' or 'grid'
+  const [sourceFilter, setSourceFilter] = useState('all'); // 'all', 'user', 'unity'
   const navigate = useNavigate();
 
   const fetchUploads = async (isManual = false) => {
@@ -77,10 +80,13 @@ export default function AdminDashboard() {
     navigate('/admin/login');
   };
 
-  const filteredUploads = uploads.filter(upload => 
-    upload.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    upload.id.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredUploads = uploads
+    .filter(upload => {
+      const matchesSearch = upload.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                            upload.id.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesSource = sourceFilter === 'all' || (upload.source || 'user') === sourceFilter;
+      return matchesSearch && matchesSource;
+    });
 
   if (loading) {
     return (
@@ -181,21 +187,46 @@ export default function AdminDashboard() {
         </div>
 
         {/* View Controls */}
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-2xl font-black">Content Library</h2>
-          <div className="flex bg-white/5 p-1 rounded-xl border border-white/10">
-            <button 
-              onClick={() => setViewMode('table')}
-              className={`p-2 rounded-lg transition-all ${viewMode === 'table' ? 'bg-white/10 text-amber-500 shadow-sm' : 'text-white/40 hover:text-white'}`}
-            >
-              <List className="w-5 h-5" />
-            </button>
-            <button 
-              onClick={() => setViewMode('grid')}
-              className={`p-2 rounded-lg transition-all ${viewMode === 'grid' ? 'bg-white/10 text-amber-500 shadow-sm' : 'text-white/40 hover:text-white'}`}
-            >
-              <LayoutGrid className="w-5 h-5" />
-            </button>
+        <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
+          <div>
+            <h2 className="text-2xl font-black mb-1">Content Library</h2>
+            <p className="text-white/30 text-sm">Manage and monitor all event media assets</p>
+          </div>
+          
+          <div className="flex items-center gap-3">
+            {/* Source Filter */}
+            <div className="flex bg-white/5 p-1 rounded-xl border border-white/10">
+              {['all', 'user', 'unity'].map((filter) => (
+                <button
+                  key={filter}
+                  onClick={() => setSourceFilter(filter)}
+                  className={`px-4 py-1.5 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all ${
+                    sourceFilter === filter 
+                    ? 'bg-amber-500 text-black shadow-lg shadow-amber-500/20' 
+                    : 'text-white/40 hover:text-white'
+                  }`}
+                >
+                  {filter}
+                </button>
+              ))}
+            </div>
+
+            <div className="w-px h-6 bg-white/10 mx-2"></div>
+
+            <div className="flex bg-white/5 p-1 rounded-xl border border-white/10">
+              <button 
+                onClick={() => setViewMode('table')}
+                className={`p-2 rounded-lg transition-all ${viewMode === 'table' ? 'bg-white/10 text-amber-500 shadow-sm' : 'text-white/40 hover:text-white'}`}
+              >
+                <List className="w-5 h-5" />
+              </button>
+              <button 
+                onClick={() => setViewMode('grid')}
+                className={`p-2 rounded-lg transition-all ${viewMode === 'grid' ? 'bg-white/10 text-amber-500 shadow-sm' : 'text-white/40 hover:text-white'}`}
+              >
+                <LayoutGrid className="w-5 h-5" />
+              </button>
+            </div>
           </div>
         </div>
 
@@ -214,10 +245,10 @@ export default function AdminDashboard() {
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="bg-white/5 text-white/40 uppercase text-[11px] font-black tracking-widest border-b border-white/5">
-                    <th className="px-8 py-5">Image</th>
-                    <th className="px-6 py-5">User / Name</th>
+                    <th className="px-8 py-5">Asset</th>
+                    <th className="px-6 py-5">Source / Origin</th>
                     <th className="px-6 py-5">Upload Date</th>
-                    <th className="px-6 py-5">Reference ID</th>
+                    <th className="px-6 py-5">Status</th>
                     <th className="px-6 py-5 text-right">Action</th>
                   </tr>
                 </thead>
@@ -229,26 +260,37 @@ export default function AdminDashboard() {
                       onClick={() => setSelectedImage(upload)}
                     >
                       <td className="px-8 py-4">
-                        <div className="w-16 h-20 rounded-xl overflow-hidden bg-white/5 border border-white/10 group-hover:border-amber-500/50 transition-all group-hover:scale-105 shadow-lg">
-                          <img 
-                            src={upload.imageUrl} 
-                            alt={upload.name}
-                            className="w-full h-full object-cover"
-                          />
+                        <div className="flex items-center gap-4">
+                          <div className="w-12 h-16 rounded-lg overflow-hidden bg-white/5 border border-white/10 group-hover:border-amber-500/50 transition-all shadow-lg shrink-0">
+                            <img 
+                              src={upload.imageUrl} 
+                              alt={upload.name}
+                              className="w-full h-full object-cover"
+                            />
+                          </div>
+                          <div className="flex flex-col min-w-0">
+                            <span className="text-sm font-bold truncate">{upload.name}</span>
+                            <code className="text-[10px] text-white/20 font-mono truncate">{upload.id}</code>
+                          </div>
                         </div>
                       </td>
                       <td className="px-6 py-4">
-                        <div className="flex flex-col">
-                          <span className="text-lg font-bold group-hover:text-amber-500 transition-colors">{upload.name}</span>
-                          <span className="text-xs text-white/30 flex items-center gap-1.5 mt-1">
-                            <User className="w-3 h-3" /> Verified Participant
-                          </span>
+                        <div className="flex items-center gap-2">
+                           {upload.source === 'unity' ? (
+                             <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 text-[10px] font-black text-blue-500 uppercase tracking-tighter">
+                               <QrCode className="w-3 h-3" /> Unity Bot
+                             </span>
+                           ) : (
+                             <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500/10 border border-amber-500/20 text-[10px] font-black text-amber-500 uppercase tracking-tighter">
+                               <User className="w-3 h-3" /> User Upload
+                             </span>
+                           )}
                         </div>
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex flex-col">
                           <span className="text-sm font-medium text-white/80">
-                            {new Date(upload.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                            {new Date(upload.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
                           </span>
                           <span className="text-[11px] text-white/30 flex items-center gap-1 mt-1 font-mono uppercase">
                             <Clock className="w-3 h-3" /> {new Date(upload.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -256,9 +298,10 @@ export default function AdminDashboard() {
                         </div>
                       </td>
                       <td className="px-6 py-4">
-                        <code className="text-[11px] bg-white/5 px-3 py-1.5 rounded-lg border border-white/5 text-white/40 font-mono">
-                          {upload.id}
-                        </code>
+                         <div className="flex items-center gap-2">
+                            <span className="w-1.5 h-1.5 rounded-full bg-green-500"></span>
+                            <span className="text-[11px] font-bold text-white/40 uppercase tracking-wider">Live URL</span>
+                         </div>
                       </td>
                       <td className="px-6 py-4 text-right">
                         <div className="flex items-center justify-end gap-2">
@@ -298,10 +341,17 @@ export default function AdminDashboard() {
                     className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent opacity-60" />
-                  <div className="absolute top-4 left-4">
-                     <span className="bg-black/60 backdrop-blur-md border border-white/10 text-[10px] px-3 py-1 rounded-full font-mono text-white/60">
+                  
+                  {/* Badges */}
+                  <div className="absolute top-4 left-4 flex flex-col gap-2">
+                     <span className="bg-black/60 backdrop-blur-md border border-white/10 text-[9px] px-2.5 py-1 rounded-full font-bold text-white/60 uppercase tracking-widest">
                         {upload.id.slice(0, 8)}
                      </span>
+                     {upload.source === 'unity' && (
+                       <span className="bg-blue-500/80 backdrop-blur-md text-[9px] px-2.5 py-1 rounded-full font-black text-white uppercase tracking-widest">
+                         Unity Bot
+                       </span>
+                     )}
                   </div>
                   <button 
                     className="absolute top-4 right-4 p-2.5 rounded-xl bg-red-500/20 backdrop-blur-md border border-red-500/20 text-red-500 hover:bg-red-500 hover:text-white transition-all opacity-0 group-hover:opacity-100"
@@ -350,35 +400,65 @@ export default function AdminDashboard() {
                 <div className="p-3 rounded-2xl bg-amber-500/10 text-amber-500 text-white">
                   <ImageIcon className="w-6 h-6" />
                 </div>
-                <button 
-                  onClick={() => setSelectedImage(null)}
-                  className="p-3 rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 hover:text-red-400 transition-all text-white"
-                >
-                  <X className="w-6 h-6" />
-                </button>
+                <div className="flex gap-2">
+                  {selectedImage.source === 'unity' && (
+                    <div className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-blue-500/10 border border-blue-500/20 text-[10px] font-black text-blue-500 uppercase">
+                       <QrCode className="w-4 h-4" /> QR Active
+                    </div>
+                  )}
+                  <button 
+                    onClick={() => setSelectedImage(null)}
+                    className="p-3 rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 hover:text-red-400 transition-all text-white"
+                  >
+                    <X className="w-6 h-6" />
+                  </button>
+                </div>
               </div>
 
-              <div className="space-y-8 flex-1">
+              <div className="space-y-8 flex-1 overflow-y-auto pr-2 custom-scrollbar">
                 <div>
-                  <label className="text-[11px] font-black uppercase tracking-widest text-white/20 mb-2 block">Uploader Name</label>
-                  <h2 className="text-3xl font-black text-white">{selectedImage.name}</h2>
+                  <label className="text-[11px] font-black uppercase tracking-widest text-white/20 mb-2 block">Identity Name</label>
+                  <h2 className="text-3xl font-black text-white leading-tight">{selectedImage.name}</h2>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="p-4 rounded-2xl bg-white/5 border border-white/5">
-                    <label className="text-[10px] font-black uppercase tracking-widest text-white/20 mb-1 block text-white">Date</label>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-white/20 mb-1 block text-white">Capture Date</label>
                     <p className="text-sm font-bold text-white">{new Date(selectedImage.createdAt).toLocaleDateString()}</p>
                   </div>
                   <div className="p-4 rounded-2xl bg-white/5 border border-white/5">
-                    <label className="text-[10px] font-black uppercase tracking-widest text-white/20 mb-1 block text-white">Time</label>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-white/20 mb-1 block text-white">Capture Time</label>
                     <p className="text-sm font-bold text-white">{new Date(selectedImage.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
                   </div>
                 </div>
 
                 <div>
-                  <label className="text-[11px] font-black uppercase tracking-widest text-white/20 mb-2 block">System Identifier</label>
-                  <div className="flex items-center gap-2 bg-white/5 p-4 rounded-2xl border border-white/5 font-mono text-xs text-white/40">
-                    <span className="flex-1 truncate">{selectedImage.id}</span>
+                  <label className="text-[11px] font-black uppercase tracking-widest text-white/20 mb-2 block">Source Origin</label>
+                  <div className={`flex items-center gap-3 p-4 rounded-2xl border ${
+                    selectedImage.source === 'unity' 
+                    ? 'bg-blue-500/5 border-blue-500/10 text-blue-500' 
+                    : 'bg-amber-500/5 border-amber-500/10 text-amber-500'
+                  }`}>
+                    {selectedImage.source === 'unity' ? <QrCode className="w-5 h-5" /> : <User className="w-5 h-5" />}
+                    <span className="text-sm font-bold uppercase tracking-wider">
+                      {selectedImage.source === 'unity' ? 'Unity Capture (QR Generator)' : 'User Upload (Web Portal)'}
+                    </span>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-black uppercase tracking-widest text-white/20 mb-2 block">Direct Asset URL (QR Ready)</label>
+                  <div className="flex flex-col gap-2 bg-white/5 p-4 rounded-2xl border border-white/5 font-mono text-[10px] text-white/40">
+                    <span className="break-all leading-relaxed line-clamp-3">{selectedImage.imageUrl}</span>
+                    <button 
+                      onClick={() => {
+                        navigator.clipboard.writeText(selectedImage.imageUrl);
+                        alert('QR Link copied to clipboard!');
+                      }}
+                      className="mt-2 text-amber-500 font-bold hover:text-white transition-colors flex items-center gap-1.5 uppercase tracking-widest text-[9px]"
+                    >
+                      <ExternalLink className="w-3 h-3" /> Copy Full URL
+                    </button>
                   </div>
                 </div>
               </div>
