@@ -1,6 +1,7 @@
 require('dotenv').config();
 const Fastify = require('fastify');
 const cors = require('@fastify/cors');
+const multipart = require('@fastify/multipart');
 const rateLimit = require('@fastify/rate-limit');
 const { Pool } = require('pg');
 const {
@@ -59,6 +60,12 @@ fastify.register(cors, {
   origin: '*',
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
+});
+
+fastify.register(multipart, {
+  limits: {
+    fileSize: 10 * 1024 * 1024 // 10MB
+  }
 });
 
 fastify.register(rateLimit, {
@@ -160,11 +167,30 @@ fastify.post('/save-upload', async (request, reply) => {
 // ====================================
 
 fastify.get('/images', async (request, reply) => {
+  const client = await pool.connect();
   try {
-    const result = await pool.query(
-      'SELECT id, name, s3_key, created_at FROM uploads ORDER BY created_at DESC'
+    await client.query('BEGIN');
+
+    // 1. Fetch images that haven't been sent yet
+    const result = await client.query(
+      'SELECT id, name, s3_key, created_at FROM uploads WHERE is_sent = FALSE ORDER BY created_at ASC'
     );
 
+    if (result.rows.length === 0) {
+      await client.query('COMMIT');
+      return [];
+    }
+
+    // 2. Mark these images as sent
+    const ids = result.rows.map(r => r.id);
+    await client.query(
+      'UPDATE uploads SET is_sent = TRUE WHERE id = ANY($1)',
+      [ids]
+    );
+
+    await client.query('COMMIT');
+
+    // 3. Generate signed URLs for the newly sent images
     const images = await Promise.all(
       result.rows.map(async (row) => {
         const command = new GetObjectCommand({
@@ -185,8 +211,11 @@ fastify.get('/images', async (request, reply) => {
 
     return images;
   } catch (err) {
+    await client.query('ROLLBACK');
     fastify.log.error(err);
-    return reply.status(500).send({ error: 'Failed to fetch images' });
+    return reply.status(500).send({ error: 'Failed to fetch new images' });
+  } finally {
+    client.release();
   }
 });
 
@@ -281,6 +310,57 @@ fastify.delete('/admin/uploads/:id', { preHandler: [authenticateAdmin] }, async 
   } catch (err) {
     fastify.log.error(err);
     return reply.status(500).send({ error: 'Failed to delete upload' });
+  }
+});
+
+// ====================================
+// API 5: Unity Upload & QR Link Generation
+// ====================================
+
+fastify.post('/unity/upload', async (request, reply) => {
+  const data = await request.file();
+  if (!data) {
+    return reply.status(400).send({ error: 'No file uploaded' });
+  }
+
+  try {
+    const id = uuidv4();
+    const filename = data.filename;
+    const ext = filename.split('.').pop() || 'jpg';
+    const s3Key = `unity-uploads/${id}.${ext}`;
+
+    const uploadParams = {
+      Bucket: AWS_BUCKET,
+      Key: s3Key,
+      Body: await data.toBuffer(),
+      ContentType: data.mimetype
+    };
+
+    // 1. Upload to S3
+    await s3Client.send(new PutObjectCommand(uploadParams));
+
+    // 2. Calculate expiry: End of May 16, 2026
+    const targetDate = new Date('2026-05-17T00:00:00Z');
+    const now = new Date();
+    // Calculate seconds remaining, default to 1 hour if target has passed
+    const secondsRemaining = Math.max(Math.floor((targetDate - now) / 1000), 3600); 
+
+    // 3. Generate Long-Term Signed URL for the QR code
+    const command = new GetObjectCommand({
+      Bucket: AWS_BUCKET,
+      Key: s3Key,
+    });
+
+    const downloadUrl = await getSignedUrl(s3Client, command, { expiresIn: secondsRemaining });
+
+    return {
+      success: true,
+      id,
+      downloadUrl
+    };
+  } catch (err) {
+    fastify.log.error(err);
+    return reply.status(500).send({ error: 'Failed to upload and generate download URL' });
   }
 });
 
