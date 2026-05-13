@@ -1,13 +1,13 @@
+require('dotenv').config();
 const Fastify = require('fastify');
-const multipart = require('@fastify/multipart');
 const cors = require('@fastify/cors');
 const rateLimit = require('@fastify/rate-limit');
-const fastifyStatic = require('@fastify/static');
-
-const fs = require('fs');
-const path = require('path');
-
+const { Pool } = require('pg');
+const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
+const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 const { v4: uuidv4 } = require('uuid');
+const jwt = require('jsonwebtoken');
+const bcrypt = require('bcrypt');
 
 const fastify = Fastify({
   logger: true
@@ -17,64 +17,38 @@ const fastify = Fastify({
 // CONFIG
 // ====================================
 
-const PORT = 3000;
-
-const UPLOAD_DIR = path.join(
-  __dirname,
-  'uploads'
-);
-
-const DB_FILE = path.join(
-  __dirname,
-  'db.json'
-);
-
-// ====================================
-// CREATE FOLDERS
-// ====================================
-
-if (!fs.existsSync(UPLOAD_DIR)) {
-  fs.mkdirSync(UPLOAD_DIR);
-}
-
-if (!fs.existsSync(DB_FILE)) {
-  fs.writeFileSync(DB_FILE, '[]');
-}
+const {
+  PORT = 3000,
+  AWS_REGION,
+  AWS_BUCKET,
+  DB_HOST,
+  DB_PORT,
+  DB_NAME,
+  DB_USER,
+  DB_PASSWORD,
+  JWT_SECRET
+} = process.env;
 
 // ====================================
-// JSON DATABASE
+// DATABASE & S3 CLIENTS
 // ====================================
 
-function readDB() {
+const pool = new Pool({
+  host: DB_HOST,
+  port: DB_PORT,
+  database: DB_NAME,
+  user: DB_USER,
+  password: DB_PASSWORD,
+});
 
-  const raw = fs.readFileSync(
-    DB_FILE,
-    'utf8'
-  );
-
-  return JSON.parse(raw);
-}
-
-function writeDB(data) {
-
-  fs.writeFileSync(
-    DB_FILE,
-    JSON.stringify(data, null, 2)
-  );
-}
+const s3Client = new S3Client({ region: AWS_REGION });
 
 // ====================================
-// PLUGINS
+// MIDDLEWARE / PLUGINS
 // ====================================
 
 fastify.register(cors, {
   origin: '*'
-});
-
-fastify.register(multipart, {
-  limits: {
-    fileSize: 1 * 1024 * 1024
-  }
 });
 
 fastify.register(rateLimit, {
@@ -82,139 +56,186 @@ fastify.register(rateLimit, {
   timeWindow: '1 minute'
 });
 
-fastify.register(fastifyStatic, {
-  root: UPLOAD_DIR,
-  prefix: '/uploads/'
-});
+// Admin Auth Middleware
+const authenticateAdmin = async (request, reply) => {
+  try {
+    const authHeader = request.headers.authorization;
+    if (!authHeader) {
+      return reply.status(401).send({ error: 'Unauthorized' });
+    }
+
+    const token = authHeader.split(' ')[1];
+    const decoded = jwt.verify(token, JWT_SECRET);
+    request.admin = decoded;
+  } catch (err) {
+    return reply.status(401).send({ error: 'Invalid or expired token' });
+  }
+};
 
 // ====================================
 // HEALTH
 // ====================================
 
 fastify.get('/', async () => {
-
-  return {
-    ok: true
-  };
+  return { ok: true, service: 'Event Platform API' };
 });
 
 // ====================================
-// UPLOAD API
+// API 1: Generate Signed Upload URL
 // ====================================
 
-fastify.post('/upload', async (request, reply) => {
+fastify.post('/generate-upload-url', async (request, reply) => {
+  const { name, contentType } = request.body;
+
+  // Validation
+  if (!name || name.trim().length < 2) {
+    return reply.status(400).send({ error: 'Valid name required (min 2 chars)' });
+  }
+
+  const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png'];
+  if (!allowedTypes.includes(contentType)) {
+    return reply.status(400).send({ error: 'Invalid image type. Allowed: jpeg, jpg, png' });
+  }
 
   try {
+    const id = uuidv4();
+    const ext = contentType.split('/')[1];
+    const s3Key = `uploads/${id}.${ext}`;
 
-    const data = await request.file();
-
-    if (!data) {
-      return reply.status(400).send({
-        error: 'File required'
-      });
-    }
-
-    const name = data.fields.name?.value;
-
-    if (!name || name.length < 2) {
-
-      return reply.status(400).send({
-        error: 'Valid name required'
-      });
-    }
-
-    const allowedTypes = [
-      'image/jpeg',
-      'image/jpg',
-      'image/png'
-    ];
-
-    if (!allowedTypes.includes(data.mimetype)) {
-
-      return reply.status(400).send({
-        error: 'Invalid image type'
-      });
-    }
-
-    const ext = data.filename
-      .split('.')
-      .pop();
-
-    const filename =
-      `${uuidv4()}.${ext}`;
-
-    const filepath = path.join(
-      UPLOAD_DIR,
-      filename
-    );
-
-    // SAVE FILE
-
-    await new Promise((resolve, reject) => {
-
-      const stream = fs.createWriteStream(
-        filepath
-      );
-
-      data.file.pipe(stream);
-
-      stream.on('finish', resolve);
-
-      stream.on('error', reject);
-
+    const command = new PutObjectCommand({
+      Bucket: AWS_BUCKET,
+      Key: s3Key,
+      ContentType: contentType,
     });
 
-    // SAVE TO DB
-
-    const uploads = readDB();
-
-    uploads.push({
-      id: uuidv4(),
-      name,
-      image: filename,
-      createdAt: new Date().toISOString()
-    });
-
-    writeDB(uploads);
+    const uploadUrl = await getSignedUrl(s3Client, command, { expiresIn: 60 });
 
     return {
-      success: true
+      id,
+      uploadUrl,
+      s3Key
     };
-
   } catch (err) {
-
-    console.error(err);
-
-    return reply.status(500).send({
-      error: 'Upload failed'
-    });
+    fastify.log.error(err);
+    return reply.status(500).send({ error: 'Failed to generate upload URL' });
   }
 });
 
 // ====================================
-// GET IMAGES
+// API 2: Save Upload Metadata
 // ====================================
 
-fastify.get('/images', async () => {
+fastify.post('/save-upload', async (request, reply) => {
+  const { id, name, s3Key } = request.body;
 
-  const uploads = readDB();
+  if (!id || !name || !s3Key) {
+    return reply.status(400).send({ error: 'Missing required fields' });
+  }
 
-  return uploads
-    .reverse()
-    .slice(0, 5000)
-    .map(item => ({
-      id: item.id,
-      name: item.name,
-      image:
-        `http://localhost:3000/uploads/${item.image}`
+  try {
+    await pool.query(
+      'INSERT INTO uploads (id, name, s3_key) VALUES ($1, $2, $3)',
+      [id, name, s3Key]
+    );
+
+    return { success: true };
+  } catch (err) {
+    fastify.log.error(err);
+    return reply.status(500).send({ error: 'Failed to save metadata' });
+  }
+});
+
+// ====================================
+// API 3: Get Images
+// ====================================
+
+fastify.get('/images', async (request, reply) => {
+  try {
+    const result = await pool.query(
+      'SELECT id, name, s3_key, created_at FROM uploads ORDER BY created_at DESC'
+    );
+
+    const images = result.rows.map(row => ({
+      id: row.id,
+      name: row.name,
+      imageUrl: `https://${AWS_BUCKET}.s3.${AWS_REGION}.amazonaws.com/${row.s3_key}`,
+      createdAt: row.created_at
     }));
+
+    return images;
+  } catch (err) {
+    fastify.log.error(err);
+    return reply.status(500).send({ error: 'Failed to fetch images' });
+  }
+});
+
+// ====================================
+// API 4: Admin Login
+// ====================================
+
+fastify.post('/admin/login', async (request, reply) => {
+  const { username, password } = request.body;
+
+  try {
+    const result = await pool.query('SELECT * FROM admins WHERE username = $1', [username]);
+    const admin = result.rows[0];
+
+    if (!admin) {
+      return reply.status(401).send({ error: 'Invalid credentials' });
+    }
+
+    const match = await bcrypt.compare(password, admin.password_hash);
+    if (!match) {
+      return reply.status(401).send({ error: 'Invalid credentials' });
+    }
+
+    const token = jwt.sign({ id: admin.id, username: admin.username }, JWT_SECRET, {
+      expiresIn: '7d'
+    });
+
+    return { token };
+  } catch (err) {
+    fastify.log.error(err);
+    return reply.status(500).send({ error: 'Login failed' });
+  }
+});
+
+// ====================================
+// PROTECTED ADMIN APIs
+// ====================================
+
+fastify.get('/admin/uploads', { preHandler: [authenticateAdmin] }, async (request, reply) => {
+  try {
+    const result = await pool.query(
+      'SELECT id, name, s3_key, created_at FROM uploads ORDER BY created_at DESC'
+    );
+
+    const uploads = result.rows.map(row => ({
+      id: row.id,
+      name: row.name,
+      imageUrl: `https://${AWS_BUCKET}.s3.${AWS_REGION}.amazonaws.com/${row.s3_key}`,
+      createdAt: row.created_at
+    }));
+
+    return uploads;
+  } catch (err) {
+    fastify.log.error(err);
+    return reply.status(500).send({ error: 'Failed to fetch admin uploads' });
+  }
 });
 
 // ====================================
 // START SERVER
 // ====================================
 
-fastify.listen({
-  port: PORT,
-  host: '0.0.0.0'
-});
+const start = async () => {
+  try {
+    await fastify.listen({ port: PORT, host: '0.0.0.0' });
+    fastify.log.info(`Server listening on ${fastify.server.address().port}`);
+  } catch (err) {
+    fastify.log.error(err);
+    process.exit(1);
+  }
+};
+
+start();

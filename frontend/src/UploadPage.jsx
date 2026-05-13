@@ -1,12 +1,11 @@
 import React, { useRef, useState, useEffect } from 'react';
-import axios from 'axios';
+import api from './utils/api';
 import { Sun, Moon } from 'lucide-react';
 
 // Components
 import WelcomeView from './components/WelcomeView';
 import CaptureView from './components/CaptureView';
 import SuccessView from './components/SuccessView';
-import MosaicWall from './components/MosaicWall';
 import OnlineStatusBar from './components/OnlineStatusBar';
 
 // Hooks & Utils
@@ -23,8 +22,7 @@ export default function App() {
   const [preview, setPreview] = useState('');
   const [loading, setLoading] = useState(false);
   const [isUploaded, setIsUploaded] = useState(false);
-  const [isMosaic] = useState(window.location.pathname.includes('mosaic'));
-  
+
   const [darkMode, setDarkMode] = useState(() => {
     const saved = localStorage.getItem('selfie_booth_theme');
     return saved ? saved === 'dark' : true;
@@ -50,7 +48,6 @@ export default function App() {
     }
   }, []);
 
-  if (isMosaic) return <MosaicWall />;
 
   const toggleTheme = () => {
     setDarkMode(prev => {
@@ -88,13 +85,13 @@ export default function App() {
 
       const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
       setPreview(dataUrl);
-      
+
       const byteString = atob(dataUrl.split(',')[1]);
       const ab = new ArrayBuffer(byteString.length);
       const ia = new Uint8Array(ab);
       for (let i = 0; i < byteString.length; i++) ia[i] = byteString.charCodeAt(i);
       setImage(new Blob([ab], { type: 'image/jpeg' }));
-      
+
       stopCamera();
     }
   };
@@ -105,6 +102,7 @@ export default function App() {
     setLoading(true); setError('');
 
     try {
+      // Step 1: Compress image
       const compressedBlob = await new Promise((resolve) => {
         const img = new Image();
         img.onload = () => {
@@ -120,16 +118,36 @@ export default function App() {
         img.src = preview;
       });
 
-      const formData = new FormData();
-      formData.append('name', name);
-      formData.append('file', new File([compressedBlob], 'photo.jpg', { type: 'image/jpeg' }));
+      const file = new File([compressedBlob], 'photo.jpg', { type: 'image/jpeg' });
 
-      await axios.post('http://localhost:3000/upload', formData);
+      // Step 2: Request signed URL
+      const { data: { id, uploadUrl, s3Key } } = await api.post('/generate-upload-url', {
+        name,
+        contentType: file.type
+      });
+
+      // Step 3: Upload directly to S3
+      await fetch(uploadUrl, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': file.type,
+        },
+        body: file,
+      });
+
+      // Step 4: Save metadata
+      await api.post('/save-upload', {
+        id,
+        name,
+        s3Key
+      });
+
       localStorage.setItem('company_event_uploaded', 'true');
       setStep(3);
       return true;
     } catch (err) {
-      setError(err.message || 'Upload failed.');
+      console.error('Upload error:', err);
+      setError(err.response?.data?.error || err.message || 'Upload failed. Please try again.');
       return false;
     } finally {
       setLoading(false);
@@ -147,12 +165,12 @@ export default function App() {
       <OnlineStatusBar />
       {step === 1 && <WelcomeView t={t} onGetStarted={() => { setStep(2); startCamera(); }} ThemeToggle={ThemeToggle} />}
       {step === 2 && (
-        <CaptureView 
-          t={t} name={name} setName={setName} error={error} isCameraOpen={isCameraOpen} 
-          preview={preview} countdown={countdown} loading={loading} videoRef={videoRef} 
-          startCamera={startCamera} stopCamera={stopCamera} startCapture={startCapture} 
-          handleUpload={handleUpload} retake={() => { setImage(null); setPreview(''); startCamera(); }} 
-          ThemeToggle={ThemeToggle} 
+        <CaptureView
+          t={t} name={name} setName={setName} error={error} isCameraOpen={isCameraOpen}
+          preview={preview} countdown={countdown} loading={loading} videoRef={videoRef}
+          startCamera={startCamera} stopCamera={stopCamera} startCapture={startCapture}
+          handleUpload={handleUpload} retake={() => { setImage(null); setPreview(''); startCamera(); }}
+          ThemeToggle={ThemeToggle}
         />
       )}
       {step === 3 && <SuccessView t={t} name={name} onReset={() => setStep(1)} ThemeToggle={ThemeToggle} />}
