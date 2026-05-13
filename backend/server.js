@@ -3,7 +3,12 @@ const Fastify = require('fastify');
 const cors = require('@fastify/cors');
 const rateLimit = require('@fastify/rate-limit');
 const { Pool } = require('pg');
-const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
+const {
+  S3Client,
+  PutObjectCommand,
+  GetObjectCommand,
+  DeleteObjectCommand
+} = require('@aws-sdk/client-s3');
 const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 const { v4: uuidv4 } = require('uuid');
 const jwt = require('jsonwebtoken');
@@ -39,6 +44,9 @@ const pool = new Pool({
   database: DB_NAME,
   user: DB_USER,
   password: DB_PASSWORD,
+  ssl: {
+    rejectUnauthorized: false
+  }
 });
 
 const s3Client = new S3Client({ region: AWS_REGION });
@@ -48,7 +56,9 @@ const s3Client = new S3Client({ region: AWS_REGION });
 // ====================================
 
 fastify.register(cors, {
-  origin: '*'
+  origin: '*',
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
 });
 
 fastify.register(rateLimit, {
@@ -155,12 +165,23 @@ fastify.get('/images', async (request, reply) => {
       'SELECT id, name, s3_key, created_at FROM uploads ORDER BY created_at DESC'
     );
 
-    const images = result.rows.map(row => ({
-      id: row.id,
-      name: row.name,
-      imageUrl: `https://${AWS_BUCKET}.s3.${AWS_REGION}.amazonaws.com/${row.s3_key}`,
-      createdAt: row.created_at
-    }));
+    const images = await Promise.all(
+      result.rows.map(async (row) => {
+        const command = new GetObjectCommand({
+          Bucket: AWS_BUCKET,
+          Key: row.s3_key,
+        });
+
+        const imageUrl = await getSignedUrl(s3Client, command, { expiresIn: 3600 });
+
+        return {
+          id: row.id,
+          name: row.name,
+          imageUrl,
+          createdAt: row.created_at
+        };
+      })
+    );
 
     return images;
   } catch (err) {
@@ -210,17 +231,56 @@ fastify.get('/admin/uploads', { preHandler: [authenticateAdmin] }, async (reques
       'SELECT id, name, s3_key, created_at FROM uploads ORDER BY created_at DESC'
     );
 
-    const uploads = result.rows.map(row => ({
-      id: row.id,
-      name: row.name,
-      imageUrl: `https://${AWS_BUCKET}.s3.${AWS_REGION}.amazonaws.com/${row.s3_key}`,
-      createdAt: row.created_at
-    }));
+    const uploads = await Promise.all(
+      result.rows.map(async (row) => {
+        const command = new GetObjectCommand({
+          Bucket: AWS_BUCKET,
+          Key: row.s3_key,
+        });
+
+        const imageUrl = await getSignedUrl(s3Client, command, { expiresIn: 3600 });
+
+        return {
+          id: row.id,
+          name: row.name,
+          imageUrl,
+          createdAt: row.created_at
+        };
+      })
+    );
 
     return uploads;
   } catch (err) {
     fastify.log.error(err);
     return reply.status(500).send({ error: 'Failed to fetch admin uploads' });
+  }
+});
+
+fastify.delete('/admin/uploads/:id', { preHandler: [authenticateAdmin] }, async (request, reply) => {
+  const { id } = request.params;
+
+  try {
+    // 1. Get the s3_key from DB
+    const result = await pool.query('SELECT s3_key FROM uploads WHERE id = $1', [id]);
+    if (result.rows.length === 0) {
+      return reply.status(404).send({ error: 'Upload not found' });
+    }
+    const { s3_key } = result.rows[0];
+
+    // 2. Delete from S3
+    const deleteCommand = new DeleteObjectCommand({
+      Bucket: AWS_BUCKET,
+      Key: s3_key,
+    });
+    await s3Client.send(deleteCommand);
+
+    // 3. Delete from DB
+    await pool.query('DELETE FROM uploads WHERE id = $1', [id]);
+
+    return { success: true };
+  } catch (err) {
+    fastify.log.error(err);
+    return reply.status(500).send({ error: 'Failed to delete upload' });
   }
 });
 
