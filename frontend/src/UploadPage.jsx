@@ -163,17 +163,16 @@ export default function App() {
   return (
     <>
       <OnlineStatusBar />
-      {step === 1 && <WelcomeView t={t} onGetStarted={() => { setStep(2); startCamera(); }} ThemeToggle={ThemeToggle} />}
+      {step === 1 && <WelcomeView onGetStarted={() => { setStep(2); startCamera(); }} />}
       {step === 2 && (
         <CaptureView
-          t={t} name={name} setName={setName} error={error} isCameraOpen={isCameraOpen}
+          name={name} setName={setName} error={error} isCameraOpen={isCameraOpen}
           preview={preview} countdown={countdown} loading={loading} videoRef={videoRef}
           startCamera={startCamera} stopCamera={stopCamera} startCapture={startCapture}
           handleUpload={handleUpload} retake={() => { setImage(null); setPreview(''); startCamera(); }}
-          ThemeToggle={ThemeToggle}
         />
       )}
-      {step === 3 && <SuccessView t={t} name={name} onReset={() => setStep(1)} ThemeToggle={ThemeToggle} />}
+      {step === 3 && <SuccessView />}
       <canvas ref={canvasRef} className="hidden" />
     </>
   );
