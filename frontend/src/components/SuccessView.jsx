@@ -5,7 +5,7 @@ import thankyouImg from '../assets/thankyou.png';
 export default function SuccessView() {
   return (
     <div 
-      className="min-h-screen w-full bg-cover bg-center bg-no-repeat flex flex-col items-center justify-center"
+      className="min-h-screen w-full bg-[100%_100%] bg-center bg-no-repeat flex flex-col items-center justify-center"
       style={{ 
         backgroundImage: `url(${bg2})`,
         fontFamily: '"Arial Rounded MT Bold", "Helvetica Rounded", Arial, sans-serif'

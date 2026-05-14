@@ -106,8 +106,6 @@ const SlideToSubmit = ({ onComplete }) => {
 };
 
 export default function CaptureView({
-  name,
-  setName,
   error,
   isCameraOpen,
   preview,
@@ -136,31 +134,15 @@ export default function CaptureView({
 
   return (
     <div 
-      className="min-h-screen w-full bg-cover bg-center bg-no-repeat flex flex-col items-center transition-all duration-500 overflow-x-hidden"
+      className="min-h-screen w-full bg-[100%_100%] bg-center bg-no-repeat flex flex-col items-center transition-all duration-500 overflow-x-hidden"
       style={{ 
         backgroundImage: `url(${bg2})`,
         fontFamily: '"Arial Rounded MT Bold", "Helvetica Rounded", Arial, sans-serif'
       }}
     >
-      <div className="w-full max-w-xl px-4 sm:px-6 py-8 sm:py-12 bg-black/20 min-h-screen backdrop-blur-[2px] flex flex-col">
+      <div className="w-full max-w-xl px-4 sm:px-6 py-8 sm:py-12 bg-black/20 flex-1 backdrop-blur-[2px] flex flex-col">
 
-        {/* Header */}
-        <header className="mb-8 sm:mb-10 flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-black tracking-tighter uppercase italic text-white drop-shadow-lg">
-              Selfie<span className="text-[#FFD700]">Booth</span>
-            </h1>
-            <p className="text-[#FFD700] text-[10px] font-black tracking-widest uppercase opacity-80">Live Event Portal</p>
-          </div>
-          <div className="flex items-center gap-3">
-            <div className="bg-[#600000]/60 px-4 py-2 rounded-full border border-[#FFD700]/30 backdrop-blur-md">
-              <div className="flex items-center gap-2">
-                <div className="w-1.5 h-1.5 rounded-full bg-[#FFD700] animate-pulse shadow-[0_0_5px_#FFD700]" />
-                <span className="text-[10px] font-black uppercase text-[#FFD700]">Live</span>
-              </div>
-            </div>
-          </div>
-        </header>
+
 
         {error && (
           <div className="mb-6 p-4 bg-[#FFD700] border-2 border-white rounded-2xl flex items-center gap-3 text-[#600000] shadow-[0_0_20px_rgba(255,215,0,0.4)] animate-in slide-in-from-top duration-300">
@@ -171,28 +153,10 @@ export default function CaptureView({
 
         <div className="flex-1 flex flex-col justify-center">
           <div className="space-y-8">
-            {/* 1. Identity */}
-            <div>
-              <label className="text-[10px] font-black text-[#FFD700] uppercase tracking-[0.2em] mb-3 block ml-1">
-                01. Identity
-              </label>
-              <div className="relative group">
-                <User className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-[#FFD700]/50 group-focus-within:text-[#FFD700] transition-colors pointer-events-none" />
-                <input
-                  type="text"
-                  placeholder="YOUR FULL NAME"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="w-full bg-[#600000]/40 border-2 border-[#FFD700]/20 focus:border-[#FFD700] outline-none rounded-2xl py-5 pl-12 pr-4 text-sm text-white font-bold tracking-wider placeholder-[#FFD700]/30 transition-all duration-300 uppercase backdrop-blur-md"
-                />
-              </div>
-            </div>
 
-            {/* 2. Capture */}
+
+            {/* Capture */}
             <div className="space-y-4">
-              <label className="text-[10px] font-black text-[#FFD700] uppercase tracking-[0.2em] mb-3 block ml-1">
-                02. Capture
-              </label>
 
               <div className="relative aspect-square bg-[#300000]/60 rounded-3xl sm:rounded-[2.5rem] border-2 border-[#FFD700]/30 overflow-hidden shadow-2xl flex items-center justify-center backdrop-blur-sm">
                 {!isCameraOpen && !preview && (
@@ -243,7 +207,7 @@ export default function CaptureView({
                     className="w-20 h-20 rounded-full border-[4px] border-[#FFD700]/50 p-1 active:scale-90 transition-all shadow-[0_0_20px_rgba(255,215,0,0.2)]"
                   >
                     <div className="w-full h-full bg-gradient-to-br from-[#FFD700] to-[#B8860B] rounded-full flex items-center justify-center transition-all duration-300">
-                      <Zap className="w-8 h-8 text-[#600000] stroke-[2.5]" />
+                      <Camera className="w-8 h-8 text-[#600000] stroke-[2.5]" />
                     </div>
                   </button>
                 </div>
@@ -256,7 +220,7 @@ export default function CaptureView({
                     onClick={retake} 
                     className="w-full transition-transform active:scale-95 hover:brightness-110"
                   >
-                    <img src={retakeBtnImg} alt="Retake" className="w-48 sm:w-56 mx-auto h-auto" />
+                    <img src={retakeBtnImg} alt="Retake" className="w-32 sm:w-40 mx-auto h-auto" />
                   </button>
                 </div>
               )}

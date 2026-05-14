@@ -17,7 +17,6 @@ export default function App() {
   const canvasRef = useRef(null);
 
   const [step, setStep] = useState(1);
-  const [name, setName] = useState('');
   const [image, setImage] = useState(null);
   const [preview, setPreview] = useState('');
   const [loading, setLoading] = useState(false);
@@ -40,6 +39,7 @@ export default function App() {
 
   const t = getTheme(darkMode);
 
+  /* Commented out for testing
   useEffect(() => {
     const status = localStorage.getItem('company_event_uploaded');
     if (status === 'true') {
@@ -47,6 +47,7 @@ export default function App() {
       setStep(3);
     }
   }, []);
+  */
 
 
   const toggleTheme = () => {
@@ -97,9 +98,9 @@ export default function App() {
   };
 
   const handleUpload = async () => {
-    if (!name.trim()) { setError('Please enter your name.'); return false; }
     if (!image) { setError('Please capture image.'); return false; }
     setLoading(true); setError('');
+    const name = 'Guest';
 
     try {
       // Step 1: Compress image
@@ -142,7 +143,7 @@ export default function App() {
         s3Key
       });
 
-      localStorage.setItem('company_event_uploaded', 'true');
+      // localStorage.setItem('company_event_uploaded', 'true');
       setStep(3);
       return true;
     } catch (err) {
@@ -166,7 +167,7 @@ export default function App() {
       {step === 1 && <WelcomeView onGetStarted={() => { setStep(2); startCamera(); }} />}
       {step === 2 && (
         <CaptureView
-          name={name} setName={setName} error={error} isCameraOpen={isCameraOpen}
+          error={error} isCameraOpen={isCameraOpen}
           preview={preview} countdown={countdown} loading={loading} videoRef={videoRef}
           startCamera={startCamera} stopCamera={stopCamera} startCapture={startCapture}
           handleUpload={handleUpload} retake={() => { setImage(null); setPreview(''); startCamera(); }}

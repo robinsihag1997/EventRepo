@@ -64,7 +64,7 @@ fastify.register(cors, {
 
 fastify.register(multipart, {
   limits: {
-    fileSize: 10 * 1024 * 1024 // 10MB
+    fileSize: 50 * 1024 * 1024 // 50MB
   }
 });
 
@@ -317,6 +317,35 @@ fastify.delete('/api/admin/uploads/:id', { preHandler: [authenticateAdmin] }, as
 // API 5: Unity Upload & QR Link Generation
 // ====================================
 
+fastify.get('/api/download/:id', async (request, reply) => {
+  const { id } = request.params;
+  try {
+    const result = await pool.query('SELECT s3_key FROM uploads WHERE id = $1', [id]);
+    if (result.rows.length === 0) {
+      return reply.status(404).send({ error: 'File not found' });
+    }
+    const { s3_key } = result.rows[0];
+
+    // Calculate expiry: End of May 16, 2026
+    const targetDate = new Date('2026-05-17T00:00:00Z');
+    const now = new Date();
+    const secondsRemaining = Math.max(Math.floor((targetDate - now) / 1000), 3600);
+
+    const command = new GetObjectCommand({
+      Bucket: AWS_BUCKET,
+      Key: s3_key,
+      ResponseContentDisposition: `attachment; filename="photo_${id.slice(0, 8)}.jpg"`
+    });
+
+    const downloadUrl = await getSignedUrl(s3Client, command, { expiresIn: secondsRemaining });
+
+    return reply.redirect(downloadUrl);
+  } catch (err) {
+    fastify.log.error(err);
+    return reply.status(500).send({ error: 'Failed to redirect to download' });
+  }
+});
+
 fastify.post('/api/unity/upload', async (request, reply) => {
   const data = await request.file();
   if (!data) {
@@ -351,19 +380,15 @@ fastify.post('/api/unity/upload', async (request, reply) => {
     // Calculate seconds remaining, default to 1 hour if target has passed
     const secondsRemaining = Math.max(Math.floor((targetDate - now) / 1000), 3600);
 
-    // 3. Generate Long-Term Signed URL for the QR code (Forcing Download)
-    const command = new GetObjectCommand({
-      Bucket: AWS_BUCKET,
-      Key: s3Key,
-      ResponseContentDisposition: `attachment; filename="photo_${id.slice(0, 8)}.jpg"`
-    });
-
-    const downloadUrl = await getSignedUrl(s3Client, command, { expiresIn: secondsRemaining });
+    // 3. Return short URL to our backend
+    const protocol = request.headers['x-forwarded-proto'] || request.protocol;
+    const host = request.headers['x-forwarded-host'] || request.headers.host;
+    const shortUrl = `${protocol}://${host}/api/download/${id}`;
 
     return {
       success: true,
       id,
-      downloadUrl
+      downloadUrl: shortUrl
     };
   } catch (err) {
     fastify.log.error(err);
