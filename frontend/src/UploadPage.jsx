@@ -39,7 +39,6 @@ export default function App() {
 
   const t = getTheme(darkMode);
 
-  /* Commented out for testing
   useEffect(() => {
     const status = localStorage.getItem('company_event_uploaded');
     if (status === 'true') {
@@ -47,7 +46,6 @@ export default function App() {
       setStep(3);
     }
   }, []);
-  */
 
 
   const toggleTheme = () => {
@@ -143,7 +141,7 @@ export default function App() {
         s3Key
       });
 
-      // localStorage.setItem('company_event_uploaded', 'true');
+      localStorage.setItem('company_event_uploaded', 'true');
       setStep(3);
       return true;
     } catch (err) {
